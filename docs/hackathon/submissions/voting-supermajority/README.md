@@ -1,4 +1,4 @@
-# Voting threshold experiment: when healthy metrics hide changed decisions
+# Voting scenario: simple majority vs. a 75% threshold
 
 ## Question
 
@@ -21,14 +21,12 @@ task:
 The seed, agents, layers, failures, duration, and other task settings are
 unchanged.
 
-## Hypothesis (written before the experiment)
+## What I expected
 
-Each voter independently votes yes with probability 0.7. I therefore expect a
-75% threshold to reject some proposals that pass under the 50% baseline. Since
-every voter should still receive a proposal and return one vote, I expect the
-message counts, delivery rate, validators, and generic `success_rate` to remain
-unchanged. If so, the standard health metrics will hide a meaningful governance
-change: whether proposals actually pass.
+In the code, each voter has a 70% chance of voting yes. I expected that moving
+the threshold from 50% to 75% would turn some passing proposals into rejections.
+I did not expect it to change message delivery or the validator results, because
+the agents would still send and count the same votes.
 
 ## Run it
 
@@ -47,8 +45,8 @@ uv run nest report traces/voting_supermajority.jsonl \
 
 ## Results
 
-The vote stream was identical in both traces: 90 vote sends, with all messages
-delivered. Only the coordinator's decision changed.
+The votes were identical in both runs. All 90 votes were delivered; only the
+coordinator's final decision changed.
 
 | Round | Yes votes | 50% baseline | 75% experiment |
 | --- | ---: | --- | --- |
@@ -58,8 +56,8 @@ delivered. Only the coordinator's decision changed.
 | 4 | 9/18 | passed | rejected |
 | 5 | 15/18 | passed | passed |
 
-The one-setting change flipped four of five decisions. It did not change any
-standard report metric: both runs reported `success_rate: 1.0`,
+Changing the threshold flipped four of the five decisions. However, both runs
+still reported `success_rate: 1.0`,
 `delivery_rate: 1.0`, `message_count: 370`, and `dropped_count: 0`. All three
 voting validators passed in both runs:
 
@@ -69,32 +67,29 @@ PASS voting_all_counted
 PASS voting_no_double_vote - checked 90 votes
 ```
 
-The experiment is deterministic: a second run produced the same SHA-256 trace
-hash, `23394e121367cd51a407c289fc9b0ef71f0597b5bd1d6d3aa8ebdebe96af1cee`.
+## What I checked
 
-## Investigation and lesson
+Four rejections out of five was more than I expected, so I checked the raw trace.
+A 75% threshold means at least 14 of the 18 voters must vote yes. Only the last
+round reached that number. I also compared all 90 vote messages between the two
+runs; they were the same, so the threshold did not change the random votes.
 
-I expected some decisions to flip, but four of five initially looked extreme.
-I checked the raw `result:` events and confirmed that a 75% threshold requires
-at least 14 of 18 yes votes; only round 5 reached it. I then compared all 90
-`vote:` sends between traces and found them byte-for-byte identical, ruling out
-a changed random stream. Finally, under the code's 0.7 yes probability, a
-binomial calculation gives a 0.333 probability that any round reaches 14 yes
-votes and a 0.330 probability of exactly one pass in five. The result was
-therefore plausible, not a simulator bug.
+As a final sanity check, I calculated the probability using the 70% yes rate in
+the code. A round has about a one-in-three chance of getting at least 14 yes
+votes, so seeing one passing round out of five is not unusual.
 
-The deeper surprise was observability: `success_rate` measures delivery, and
-the validators check tally integrity, completeness, and duplicate votes. None
-reports proposal outcomes. The system can therefore look perfectly healthy
-while a policy change reverses 80% of its decisions. A useful next metric would
-be `proposal_pass_rate`, reported alongside the configured threshold and each
-round's yes-vote margin.
+## What I learned
+
+The surprising part was not the vote math. It was that the reports looked
+exactly as healthy before and after the change. Here, `success_rate` describes
+message delivery, while the validators check that votes were counted correctly
+and only once. They do not say how many proposals passed. I would add a simple
+`proposal_pass_rate` metric and show each round's margin, so a reader can see the
+effect of changing the decision rule.
 
 ## AI and other help
 
-I used OpenAI Codex to inspect the course instructions and repository,
-short-list a small experiment, preserve the hypothesis before execution,
-run the scenarios, analyze the JSONL traces, and edit this README. I checked
-the generated work by reading the scenario implementation, rerunning the
-commands, inspecting the concrete trace events, and reviewing the final diff.
-No human help or external tutorial was used.
+I used OpenAI Codex to help me read the repository, run the two scenarios,
+compare the JSONL traces, and edit this README. I used the repository's
+quickstart, scenario guide, voting implementation, validators, and
+`CONTRIBUTING.md`. I did not use an external tutorial or human help.
